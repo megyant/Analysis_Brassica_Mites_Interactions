@@ -1,0 +1,292 @@
+---
+title: "Brassica growth under fertiliser and mite infestation"
+author: "Margarida Antunes"
+date: "2023-06-06"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data and packages
+
+```{r packages}
+library(tidyverse)
+library(lme4)
+library(car)
+library(emmeans)
+```
+
+```{r data}
+data <- read.csv("data/data2.csv", sep = ";", na.strings = "NA") %>%
+  mutate(Mite_ID = factor(Mite_ID),
+         # growth between measurements
+         H1_H2 = P_height_2 - P_height,
+         H2_H3 = P_height_3 - P_height_2,
+         L1_L2 = P_leaves_2 - P_leaves,
+         L2_L3 = P_leaves_3 - P_leaves_2,
+         P1_P2 = P_pistil_VIZ_2 - P_pistil_VIZ,
+         P2_P3 = P_pistil_VIZ_3 - P_pistil_VIZ_2)
+```
+
+# Data preparation
+
+Plants were measured at three time points (weeks 4, 6 and 7). The data are
+reshaped from one row per plant to one row per plant per time point.
+
+```{r reshape}
+# Measurements from one time point (n = 1, 2 or 3)
+timepoint <- function(n, week) {
+  sfx <- if (n == 1) "" else paste0("_", n)
+  data.frame(
+    ID = data$ID, Block = data$Block, Pot = data$Pot, Plant = data$Plant,
+    Nutrient = data$Nutrient, Mite_ID = data$Mite_ID, Replica = data$Replica,
+    Ecosystem = data$Ecosystem,
+    Date   = data[[paste0("Date_", n)]],
+    Leaves = data[[paste0("P_leaves", sfx)]],
+    Height = data[[paste0("P_height", sfx)]],
+    Pistil = data[[paste0("P_pistil_VIZ", sfx)]],
+    Mites  = data[[paste0("Mite_N", sfx)]],
+    Week   = week
+  )
+}
+
+d1 <- timepoint(1, "W4")
+d2 <- timepoint(2, "W6")
+d3 <- timepoint(3, "W7")
+
+# All time points (used for descriptive plots)
+dt <- bind_rows(d1, d2, d3) %>% mutate(Week = factor(Week))
+
+# Weeks 6 and 7, with week-4 values as the initial (baseline) measurement
+dt2 <- bind_rows(d2, d3)
+baseline <- d1 %>% select(ID, InLeaves = Leaves, InHeight = Height)
+dt3 <- inner_join(dt2, baseline, by = "ID")
+
+# Only plants that received mites
+dt_mites <- dt3 %>% filter(Mite_ID != "No")
+
+# Total mites per pot, for plants with mites
+count_block <- data %>%
+  filter(Mite_ID != "No") %>%
+  group_by(Block, Mite_ID, Nutrient, Ecosystem, Pot) %>%
+  summarise(Mite_total2 = sum(Mite_N_2),
+            Mite_total3 = sum(Mite_N_3),
+            .groups = "drop")
+```
+
+```{r helpers}
+# Histogram + Shapiro-Wilk test
+check_normality <- function(x, title, xlab) {
+  hist(x, main = title, xlab = xlab)
+  shapiro.test(x)
+}
+
+# Estimated marginal means with 95% CI, one panel per level of `panel`
+mite_colours <- c("#00BFC4", "#F8766D", "#7CAE00", "#C77CFF", "#FFC300")
+
+plot_emmeans <- function(means, x, panel, ylab, dodge = -0.2) {
+  ggplot(means, aes(x = .data[[x]], y = emmean, group = .data[[panel]])) +
+    facet_wrap(reformulate(panel), ncol = 4) +
+    geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), colour = "black",
+                  width = 0, linewidth = 0.75, alpha = 0.66,
+                  position = position_dodge(dodge)) +
+    geom_line() +
+    geom_point(aes(fill = Mite_ID), shape = 21, size = 2.5, stroke = 1,
+               position = position_dodge(dodge)) +
+    ylab(ylab) +
+    scale_fill_manual(values = mite_colours) +
+    theme_bw() + theme(aspect.ratio = 1)
+}
+```
+
+# Data distribution
+
+## Height
+
+```{r}
+check_normality(data$P_height,   "Initial plant height",      "Initial height (mm)")
+check_normality(data$P_height_2, "Intermediate plant height", "Intermediate height (mm)")
+check_normality(data$H1_H2,      "Growth between measurements 1 and 2", "H2 - H1 (mm)")
+```
+
+None of the height variables are normally distributed.
+
+## Leaves
+
+```{r}
+check_normality(data$P_leaves,   "Initial number of leaves",      "Initial leaves")
+check_normality(data$P_leaves_2, "Intermediate number of leaves", "Intermediate leaves")
+check_normality(data$L1_L2,      "Leaf change between measurements 1 and 2", "L2 - L1")
+```
+
+None of the leaf variables are normally distributed.
+
+# Models
+
+All models are linear mixed-effects models with week nested within ecosystem as
+random effects, tested with Type III F-tests.
+
+## Height
+
+**Model 1:** Height ~ Initial height + Nutrient × Mite origin + (1 | Week/Ecosystem)
+
+```{r}
+model1 <- lmer(Height ~ InHeight + Nutrient * Mite_ID + (1 | Week/Ecosystem), data = dt3)
+Anova(model1, type = "III", test.statistic = "F")
+summary(model1)
+
+means_height <- as.data.frame(emmeans(model1, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
+means_height
+```
+
+**Results**
+
+* Initial height: P < 2e-16 (estimate = 0.717)
+* Nutrient: P = 0.015 (estimate = 20.4)
+
+**Conclusion.** Plants that started taller stayed taller: each extra mm of
+initial height predicted about 0.7 mm more height later. Fertiliser increased
+height by about 20 mm compared with control plants.
+
+From the plots, plants with mites from tomato were the smallest and plants with
+mites from bean the tallest. Mites from tomato may be more costly to the plant.
+
+```{r}
+plot_emmeans(means_height, x = "Nutrient", panel = "Mite_ID",
+             ylab = "Height in mm (estimated marginal means)")
+plot_emmeans(means_height, x = "Mite_ID", panel = "Nutrient",
+             ylab = "Height in mm (estimated marginal means)")
+```
+
+## Leaves
+
+**Model 2:** Leaves ~ Initial leaves + Nutrient × Mite origin + (1 | Week/Ecosystem)
+
+```{r}
+model2 <- lmer(Leaves ~ InLeaves + Nutrient * Mite_ID + (1 | Week/Ecosystem), data = dt3)
+Anova(model2, type = "III", test.statistic = "F")
+summary(model2)
+
+means_leaves <- as.data.frame(emmeans(model2, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
+means_leaves
+```
+
+**Results**
+
+* Initial leaves: P = 6.4e-05 (estimate = 0.27)
+* Nutrient: P = 0.00084 (estimate = 1.16)
+* Nutrient × Mite origin: P = 0.0095 (df = 2)
+  * Fertiliser × tomato mites: estimate = -0.40
+  * Fertiliser × no mites: estimate = 1.03
+
+**Conclusion.** Plants with more leaves at the start kept having more leaves
+(about 0.3 more per initial leaf). Fertilised plants had about 1.2 more leaves.
+
+The fertiliser effect depended on mite origin: compared with plants carrying
+bean mites, it was about 0.4 leaves smaller with tomato mites and about 1 leaf
+larger without mites. The largest fertiliser effect was in plants without mites,
+which suggests that mites may counteract the benefit of fertiliser.
+
+```{r}
+plot_emmeans(means_leaves, x = "Nutrient", panel = "Mite_ID",
+             ylab = "Total leaves (estimated marginal means)")
+plot_emmeans(means_leaves, x = "Mite_ID", panel = "Nutrient",
+             ylab = "Total leaves (estimated marginal means)")
+```
+
+## Pistils
+
+**Model 3:** Pistils ~ Nutrient × Mite origin + (1 | Week/Ecosystem)
+
+```{r}
+model3 <- lmer(Pistil ~ Nutrient * Mite_ID + (1 | Week/Ecosystem), data = dt3,
+               control = lmerControl(optimizer = "bobyqa"))
+Anova(model3, type = "III", test.statistic = "F")
+summary(model3)
+
+means_pistil <- as.data.frame(emmeans(model3, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
+means_pistil
+```
+
+**Results**
+
+* Nutrient: P = 0.004 (estimate = 2.73)
+
+**Conclusion.** Fertilised plants had about 3 more pistils than control plants,
+which suggests a higher potential reproductive output.
+
+```{r}
+plot_emmeans(means_pistil, x = "Nutrient", panel = "Mite_ID",
+             ylab = "Total pistils (estimated marginal means)")
+plot_emmeans(means_pistil, x = "Mite_ID", panel = "Nutrient",
+             ylab = "Total pistils (estimated marginal means)")
+```
+
+## Mites
+
+**Model 4:** Mites ~ Nutrient × Mite origin + (1 | Week/Ecosystem), plants with mites only
+
+```{r}
+model4 <- lmer(Mites ~ Nutrient * Mite_ID + (1 | Week/Ecosystem), data = dt_mites)
+Anova(model4, type = "III", test.statistic = "F")
+summary(model4)
+
+means_mites <- as.data.frame(emmeans(model4, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
+means_mites
+```
+
+**Conclusion.** No effect was significant. Mite origin was close to
+significance, with fewer mites from tomato than from bean.
+
+```{r}
+plot_emmeans(means_mites, x = "Nutrient", panel = "Mite_ID",
+             ylab = "Number of mites (estimated marginal means)")
+plot_emmeans(means_mites, x = "Mite_ID", panel = "Nutrient",
+             ylab = "Number of mites (estimated marginal means)")
+```
+
+# Descriptive plots
+
+```{r}
+boxplot_by_week <- function(df, y, fill = NULL) {
+  mapping <- if (is.null(fill)) aes(x = Nutrient, y = .data[[y]])
+             else aes(x = Nutrient, y = .data[[y]], fill = .data[[fill]])
+  ggplot(df, mapping) +
+    geom_boxplot() +
+    facet_grid(cols = vars(Week))
+}
+
+boxplot_by_week(dt,  "Height")
+boxplot_by_week(dt,  "Height", fill = "Mite_ID")
+boxplot_by_week(dt,  "Leaves")
+boxplot_by_week(dt,  "Leaves", fill = "Mite_ID")
+boxplot_by_week(dt2, "Pistil")
+boxplot_by_week(dt2, "Pistil", fill = "Mite_ID")
+boxplot_by_week(dt2, "Mites")
+boxplot_by_week(dt2, "Mites",  fill = "Mite_ID")
+```
+
+```{r}
+ggplot(count_block, aes(x = Nutrient, y = Mite_total2)) +
+  geom_boxplot() + facet_grid(cols = vars(Mite_ID)) +
+  ylab("Total mites per pot (measurement 2)")
+
+ggplot(count_block, aes(x = Nutrient, y = Mite_total3)) +
+  geom_boxplot() + facet_grid(cols = vars(Mite_ID)) +
+  ylab("Total mites per pot (measurement 3)")
+```
+
+# Next steps
+
+* Model selection with AIC and BIC (backward elimination)
+* Pistils as a measure of potential reproductive output
+* Where leaf loss was highest
