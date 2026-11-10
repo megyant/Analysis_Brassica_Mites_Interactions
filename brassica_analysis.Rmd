@@ -135,6 +135,13 @@ None of the leaf variables are normally distributed.
 All models are linear mixed-effects models with week nested within ecosystem as
 random effects, tested with Type III F-tests.
 
+**Note on main effects.** With R's default treatment contrasts, the Type III test of a
+main effect in a model with an interaction tests that effect at the reference level of
+the other factor only (bean mites for fertiliser, control plants for mite origin). The
+overall effects below are therefore taken from estimated marginal means (`emmeans`):
+the effect is first estimated in each group, and the average effect is the mean of
+those group effects. Each model shows this calculation step by step.
+
 ## Height
 
 **Model 1:** Height ~ Initial height + Nutrient × Mite origin + (1 | Week/Ecosystem)
@@ -146,16 +153,30 @@ summary(model1)
 
 means_height <- as.data.frame(emmeans(model1, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
 means_height
+
+# 1. Effect in each group
+by_group <- as.data.frame(pairs(emmeans(model1, ~ Nutrient | Mite_ID)))
+by_group$effect <- -by_group$estimate
+by_group[, c("Mite_ID", "effect", "p.value")]
+
+# 2. Average effect by hand: the mean of the group effects
+mean(by_group$effect)
+
+# 3. The same average with emmeans, which also gives the P value
+pairs(emmeans(model1, ~ Nutrient))
 ```
 
 **Results**
 
 * Initial height: P < 2e-16 (estimate = 0.717)
-* Nutrient: P = 0.015 (estimate = 20.4)
+* Fertiliser within each mite group: +20.4 mm with bean mites (P = 0.015),
+  +16.6 mm with tomato mites (P = 0.045), +12.8 mm without mites (P = 0.12)
+* Fertiliser, averaged over mite groups: (20.4 + 16.6 + 12.8) / 3 = +16.6 mm (P = 0.0008)
+* Fertiliser × mite origin: not significant (P = 0.80)
 
 **Conclusion.** Plants that started taller stayed taller: each extra mm of
 initial height predicted about 0.7 mm more height later. Fertiliser increased
-height by about 20 mm compared with control plants.
+height by about 17 mm on average compared with control plants.
 
 From the plots, plants with mites from tomato were the smallest and plants with
 mites from bean the tallest. Mites from tomato may be more costly to the plant.
@@ -178,22 +199,22 @@ summary(model2)
 
 means_leaves <- as.data.frame(emmeans(model2, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
 means_leaves
+
+# Fertiliser effect within each mite group (the interaction is significant)
+pairs(emmeans(model2, ~ Nutrient | Mite_ID))
 ```
 
 **Results**
 
 * Initial leaves: P = 6.4e-05 (estimate = 0.27)
-* Nutrient: P = 0.00084 (estimate = 1.16)
-* Nutrient × Mite origin: P = 0.0095 (df = 2)
-  * Fertiliser × tomato mites: estimate = -0.40
-  * Fertiliser × no mites: estimate = 1.03
+* Fertiliser × mite origin: P = 0.0095 (df = 2)
+* Fertiliser within each mite group: +2.2 leaves without mites (P < 0.0001),
+  +1.2 with bean mites (P = 0.0008), +0.8 with tomato mites (P = 0.024)
 
 **Conclusion.** Plants with more leaves at the start kept having more leaves
-(about 0.3 more per initial leaf). Fertilised plants had about 1.2 more leaves.
-
-The fertiliser effect depended on mite origin: compared with plants carrying
-bean mites, it was about 0.4 leaves smaller with tomato mites and about 1 leaf
-larger without mites. The largest fertiliser effect was in plants without mites,
+(about 0.3 more per initial leaf). Fertilised plants had more leaves in every
+mite group, but the size of the effect depended on mite origin: about 2.2 more
+leaves without mites, 1.2 with bean mites and 0.8 with tomato mites. The largest fertiliser effect was in plants without mites,
 which suggests that mites may counteract the benefit of fertiliser.
 
 ```{r}
@@ -215,13 +236,27 @@ summary(model3)
 
 means_pistil <- as.data.frame(emmeans(model3, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
 means_pistil
+
+# 1. Effect in each group
+by_group <- as.data.frame(pairs(emmeans(model3, ~ Nutrient | Mite_ID)))
+by_group$effect <- -by_group$estimate
+by_group[, c("Mite_ID", "effect", "p.value")]
+
+# 2. Average effect by hand: the mean of the group effects
+mean(by_group$effect)
+
+# 3. The same average with emmeans, which also gives the P value
+pairs(emmeans(model3, ~ Nutrient))
 ```
 
 **Results**
 
-* Nutrient: P = 0.004 (estimate = 2.73)
+* Fertiliser within each mite group: +2.725 with bean mites (P = 0.004),
+  +1.567 with tomato mites (P = 0.090), +2.167 without mites (P = 0.021)
+* Fertiliser, averaged over mite groups: (2.725 + 1.567 + 2.167) / 3 = +2.15 pistils (P = 0.0001)
+* Fertiliser × mite origin: not significant (P = 0.67)
 
-**Conclusion.** Fertilised plants had about 3 more pistils than control plants,
+**Conclusion.** Fertilised plants had about 2 more pistils than control plants,
 which suggests a higher potential reproductive output.
 
 ```{r}
@@ -242,10 +277,34 @@ summary(model4)
 
 means_mites <- as.data.frame(emmeans(model4, specs = pairwise ~ Nutrient * Mite_ID)$emmeans)
 means_mites
+
+# 1. Effect in each group
+by_group <- as.data.frame(pairs(emmeans(model4, ~ Mite_ID | Nutrient)))
+by_group$effect <- by_group$estimate
+by_group[, c("Nutrient", "effect", "p.value")]
+
+# 2. Average effect by hand: the mean of the group effects
+mean(by_group$effect)
+
+# 3. The same average with emmeans, which also gives the P value
+pairs(emmeans(model4, ~ Mite_ID))
+
+# Fertiliser averaged over mite origin
+pairs(emmeans(model4, ~ Nutrient))
 ```
 
-**Conclusion.** No effect was significant. Mite origin was close to
-significance, with fewer mites from tomato than from bean.
+**Results**
+
+* Mite origin within each fertiliser group: 2.04 fewer tomato than bean mites in control
+  plants (P = 0.052), 2.45 fewer in fertilised plants (P = 0.021)
+* Mite origin, averaged over fertiliser: (2.04 + 2.45) / 2 = 2.25 fewer tomato mites (P = 0.0035)
+* Fertiliser, averaged over mite origin: no effect (P = 0.14)
+* Fertiliser × mite origin: not significant (P = 0.78)
+
+**Conclusion.** Plants carried about 2 fewer mites from tomato than from bean.
+Fertiliser did not change the number of mites. The Type III test of mite origin
+(P = 0.052) only compares the two origins in control plants, which is why it looked
+borderline.
 
 ```{r}
 plot_emmeans(means_mites, x = "Nutrient", panel = "Mite_ID",
@@ -284,9 +343,3 @@ ggplot(count_block, aes(x = Nutrient, y = Mite_total3)) +
   geom_boxplot() + facet_grid(cols = vars(Mite_ID)) +
   ylab("Total mites per pot (measurement 3)")
 ```
-
-# Next steps
-
-* Model selection with AIC and BIC (backward elimination)
-* Pistils as a measure of potential reproductive output
-* Where leaf loss was highest

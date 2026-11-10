@@ -28,18 +28,25 @@ one row per plant ──reshape──► one row per plant per week
           trait ~ initial value + fertiliser × mite origin + (1 | week / ecosystem)
                                      │
           Type III F-tests (car)  →  estimated marginal means (emmeans)
+                                     │
+          overall effects averaged over the other factor (emmeans contrasts)
 ```
 
 ## Key results
 
-| Trait | Effect | P |
+| Trait | Effect (fertilised vs control, averaged over mite groups unless stated) | P |
 |---|---|---|
-| Height | fertiliser: +20 mm | 0.015 |
-| Leaves | fertiliser: +1.2 leaves; effect depends on mite origin, largest without mites | 0.0008; interaction 0.009 |
-| Pistils | fertiliser: +2.7 pistils | 0.004 |
-| Mite count | fewer tomato than bean mites (borderline) | 0.052 |
+| Height | fertiliser: +17 mm | 0.0008 |
+| Leaves | fertiliser effect depends on mite origin: +2.2 leaves without mites, +1.2 with bean mites, +0.8 with tomato mites | interaction 0.009 |
+| Pistils | fertiliser: +2.2 pistils | 0.0001 |
+| Mite count | about 2 fewer tomato than bean mites (averaged over fertiliser) | 0.004 |
 
 Mite origin on its own did not significantly change plant height, leaves or pistils.
+
+**Note.** An earlier version of this README reported +20 mm (height), +1.2 leaves and
++2.7 pistils. Those were the Type III main-effect estimates, which with R's default
+treatment contrasts only describe plants with bean mites. The table above reports the
+average effects from estimated marginal means; see the report for each group.
 
 ## Repository structure
 
